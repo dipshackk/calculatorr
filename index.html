@@ -1,0 +1,528 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui}</style><title>Калькулятор</title></head><body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Макет: слева калькулятор, справа история; на телефоне история уходит под кнопки.
+     Цвета взяты из десктопной версии: белый фон и экран, чёрный текст, тёмно-серые цифры,
+     оранжевые операторы, серые функции, красные C и ←, зелёное «=». */
+  :root {
+    --bg: #ffffff;
+    --panel: #f4f5f6;
+    --fg: #000000;
+    --muted: #5d646c;
+    --line: #dcdfe3;
+    --focus: #1d4ed8;
+
+    --btn-num: #3c3c3c;
+    --btn-op: #ff9500;
+    --btn-fn: #6c757d;
+    --btn-clear: #d9534f;
+    --btn-eq: #28a745;
+    --btn-fg: #ffffff;
+
+    --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101113;
+      --panel: #191b1e;
+      --fg: #f3f4f5;
+      --muted: #9aa1aa;
+      --line: #2b2e33;
+      --focus: #8ab4ff;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101113;
+    --panel: #191b1e;
+    --fg: #f3f4f5;
+    --muted: #9aa1aa;
+    --line: #2b2e33;
+    --focus: #8ab4ff;
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-ui);
+    font-size: 16px;
+    padding-inline: 16px;
+    padding-block: 24px;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+    max-width: 400px;
+    margin-inline: auto;
+  }
+  @media (min-width: 780px) {
+    .app {
+      grid-template-columns: minmax(0, 380px) minmax(0, 300px);
+      max-width: none;
+      justify-content: center;
+      align-items: start;
+      padding-top: 24px;
+    }
+  }
+
+  /* ---------- Экран ---------- */
+  .display {
+    min-height: 5.75rem;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 4px 4px 14px;
+    margin-bottom: 14px;
+    border-bottom: 2px solid var(--line);
+    font-family: var(--font-num);
+    font-weight: 500;
+    font-size: 2.75rem;
+    line-height: 1.1;
+    text-align: right;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+  }
+  .display[data-size="m"]  { font-size: 2.1rem; }
+  .display[data-size="s"]  { font-size: 1.6rem; }
+  .display[data-size="xs"] { font-size: 1.25rem; }
+  .display.empty { color: var(--muted); }
+  .display.error { color: var(--btn-clear); font-family: var(--font-ui); font-size: 1.9rem; }
+
+  /* ---------- Кнопки ---------- */
+  .keys {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .key {
+    height: 62px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--btn-num);
+    color: var(--btn-fg);
+    font-family: var(--font-ui);
+    font-size: 1.4rem;
+    font-weight: 500;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .key.op    { background: var(--btn-op); font-size: 1.6rem; }
+  .key.fn    { background: var(--btn-fn); font-size: 1.2rem; }
+  .key.clear { background: var(--btn-clear); }
+  .key.eq    { background: var(--btn-eq); grid-column: 1 / -1; font-size: 1.6rem; }
+  .key:hover { filter: brightness(1.12); }
+  .key:active, .key.pressed { filter: brightness(1.3); transform: scale(0.97); }
+  .key:focus-visible, .hist-item:focus-visible, .link-btn:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .key { transition: transform 60ms ease-out, filter 60ms ease-out; }
+  }
+
+  /* ---------- История ---------- */
+  .history {
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 16px;
+    min-width: 0;
+  }
+  .history-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .history h2 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+  .link-btn {
+    border: 0;
+    background: none;
+    padding: 4px 2px;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.875rem;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .link-btn:hover { color: var(--fg); }
+  .history ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 22rem;
+    overflow-y: auto;
+  }
+  .history li + li { border-top: 1px solid var(--line); }
+  .hist-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 2px;
+    border: 0;
+    background: none;
+    color: var(--fg);
+    font-family: var(--font-num);
+    font-size: 0.95rem;
+    text-align: left;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .hist-item:hover .h-res { text-decoration: underline; text-underline-offset: 3px; }
+  .h-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  .h-res { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .empty-note { margin: 4px 0 2px; color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+</style>
+
+<main class="app">
+  <section aria-label="Калькулятор">
+    <div id="display" class="display empty" role="status" aria-live="polite" aria-atomic="true">0</div>
+    <div id="keys" class="keys"></div>
+  </section>
+
+  <aside class="history" aria-label="История вычислений">
+    <div class="history-head">
+      <h2>История</h2>
+      <button type="button" id="clearHistory" class="link-btn" hidden>Очистить</button>
+    </div>
+    <ul id="historyList"></ul>
+    <p id="historyEmpty" class="empty-note">Здесь появятся последние 15 вычислений. Нажмите на запись, чтобы вернуть её результат на экран.</p>
+  </aside>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  // ENGINE START ------------------------------------------------------------
+  // Вычисление без eval: строка разбирается рекурсивным спуском, разрешены только
+  // числа, + - * /, унарный знак и скобки. Всё остальное считается ошибкой.
+  class CalcError extends Error {
+    constructor(kind) { super(kind); this.kind = kind; } // "div0" | "syntax" | "math"
+  }
+
+  const NUMBER_RE = /(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/y;
+
+  function evaluate(text) {
+    let i = 0;
+    const peek = () => { while (text[i] === " ") i++; return text[i]; };
+
+    function number() {
+      peek();
+      NUMBER_RE.lastIndex = i;
+      const m = NUMBER_RE.exec(text);
+      if (!m) throw new CalcError("syntax");
+      i += m[0].length;
+      return parseFloat(m[0]);
+    }
+    function factor() {
+      const c = peek();
+      if (c === "+") { i++; return factor(); }
+      if (c === "-") { i++; return -factor(); }
+      if (c === "(") {
+        i++;
+        const v = expr();
+        if (peek() !== ")") throw new CalcError("syntax");
+        i++;
+        return v;
+      }
+      return number();
+    }
+    function term() {
+      let v = factor();
+      for (;;) {
+        const c = peek();
+        if (c === "*") { i++; v *= factor(); }
+        else if (c === "/") {
+          i++;
+          const d = factor();
+          if (d === 0) throw new CalcError("div0");
+          v /= d;
+        } else return v;
+      }
+    }
+    function expr() {
+      let v = term();
+      for (;;) {
+        const c = peek();
+        if (c === "+") { i++; v += term(); }
+        else if (c === "-") { i++; v -= term(); }
+        else return v;
+      }
+    }
+
+    const result = expr();
+    if (peek() !== undefined) throw new CalcError("syntax");
+    return result;
+  }
+
+  // 6 -> "6", 0.1+0.2 -> "0.3", 1e20 -> "1e+20"
+  function formatResult(v) {
+    if (!Number.isFinite(v)) throw new CalcError("math");
+    if (Math.abs(v) >= 1e15) return v.toPrecision(10).replace(/\.?0+e/, "e");
+    if (Number.isInteger(v)) return String(v);
+    return String(Number(v.toFixed(10)));
+  }
+
+  function applyFunction(name, v) {
+    switch (name) {
+      case "%":   return v / 100;
+      case "√":   if (v < 0) throw new CalcError("math"); return Math.sqrt(v);
+      case "x²":  return v * v;
+      case "1/x": if (v === 0) throw new CalcError("div0"); return 1 / v;
+    }
+    throw new CalcError("syntax");
+  }
+
+  function describe(name, text) {
+    switch (name) {
+      case "%":   return `${text}%`;
+      case "√":   return `√(${text})`;
+      case "x²":  return `(${text})²`;
+      case "1/x": return `1/(${text})`;
+    }
+    return text;
+  }
+
+  // Смена знака последнего числа: "2+3" -> "2+(-3)" -> "2+3"
+  const NUM = "\\d+\\.?\\d*|\\.\\d+";
+  const WHOLE = new RegExp(`^-?(?:${NUM})$`);
+  const WRAPPED_END = new RegExp(`\\(-(${NUM})\\)$`);
+  const NUMBER_END = new RegExp(`(${NUM})$`);
+
+  function toggleSign(text) {
+    if (!text || /[A-Za-zА-Яа-я]/.test(text)) return text;
+    if (WHOLE.test(text)) return text.startsWith("-") ? text.slice(1) : "-" + text;
+    let m = WRAPPED_END.exec(text);
+    if (m) return text.slice(0, m.index) + m[1];
+    m = NUMBER_END.exec(text);
+    if (m) return text.slice(0, m.index) + `(-${m[0]})`;
+    return text;
+  }
+  // ENGINE END --------------------------------------------------------------
+
+  // ---------- Интерфейс ----------
+  const LAYOUT = [
+    ["C", "←", "(", ")"],
+    ["%", "√", "x²", "1/x"],
+    ["7", "8", "9", "/"],
+    ["4", "5", "6", "*"],
+    ["1", "2", "3", "-"],
+    ["±", "0", ".", "+"],
+    ["="],
+  ];
+  const OPS = new Set(["+", "-", "*", "/"]);
+  const FUNCS = new Set(["%", "√", "x²", "1/x"]);
+  const LABELS = { "/": "÷", "*": "×", "-": "−" };
+  const ARIA = {
+    "C": "Очистить", "←": "Стереть символ", "√": "Квадратный корень", "x²": "Квадрат",
+    "1/x": "Обратное число", "±": "Сменить знак", "%": "Процент", "=": "Равно",
+    "/": "Разделить", "*": "Умножить", "-": "Минус", "+": "Плюс", "(": "Открыть скобку",
+    ")": "Закрыть скобку", ".": "Точка",
+  };
+  const HISTORY_LIMIT = 15;
+  const MAX_LEN = 64;
+  const STORE_KEY = "calc-history";
+
+  const displayEl = document.getElementById("display");
+  const keysEl = document.getElementById("keys");
+  const listEl = document.getElementById("historyList");
+  const emptyEl = document.getElementById("historyEmpty");
+  const clearHistoryBtn = document.getElementById("clearHistory");
+
+  const state = { expr: "", fresh: false, error: "", history: loadHistory() };
+
+  // Для экрана: * / - показываем как × ÷ −
+  const pretty = (s) => s.replace(/\*/g, "×").replace(/\//g, "÷").replace(/-/g, "−");
+
+  function loadHistory() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "[]");
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .filter((x) => Array.isArray(x) && typeof x[0] === "string" && typeof x[1] === "string")
+        .slice(0, HISTORY_LIMIT);
+    } catch (e) { return []; }
+  }
+  function saveHistory() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state.history)); } catch (e) { /* не страшно */ }
+  }
+
+  function buildKeys() {
+    for (const row of LAYOUT) {
+      for (const sym of row) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "key";
+        if (OPS.has(sym)) b.classList.add("op");
+        else if (FUNCS.has(sym) || sym === "±") b.classList.add("fn");
+        else if (sym === "C" || sym === "←") b.classList.add("clear");
+        else if (sym === "=") b.classList.add("eq");
+        b.dataset.key = sym;
+        b.textContent = LABELS[sym] || sym;
+        if (ARIA[sym]) b.setAttribute("aria-label", ARIA[sym]);
+        keysEl.appendChild(b);
+      }
+    }
+  }
+
+  function render() {
+    const text = state.error || pretty(state.expr);
+    displayEl.textContent = text || "0";
+    displayEl.classList.toggle("empty", !text);
+    displayEl.classList.toggle("error", !!state.error);
+    const n = text.length;
+    displayEl.dataset.size = n <= 9 ? "l" : n <= 14 ? "m" : n <= 20 ? "s" : "xs";
+  }
+
+  function renderHistory() {
+    listEl.textContent = "";
+    state.history.forEach(([label, result], idx) => {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "hist-item";
+      b.dataset.index = String(idx);
+      b.title = "Вернуть результат на экран";
+      const l = document.createElement("span");
+      l.className = "h-label";
+      l.textContent = pretty(label);
+      const r = document.createElement("span");
+      r.className = "h-res";
+      r.textContent = "= " + pretty(result);
+      b.append(l, r);
+      li.appendChild(b);
+      listEl.appendChild(li);
+    });
+    const has = state.history.length > 0;
+    emptyEl.hidden = has;
+    clearHistoryBtn.hidden = !has;
+  }
+
+  // ---------- Действия ----------
+  function clearAll() { state.expr = ""; state.fresh = false; state.error = ""; }
+
+  function addSymbol(sym) {
+    if (state.error) clearAll();
+    else if (state.fresh && !OPS.has(sym)) clearAll(); // после результата цифра начинает новый пример
+    state.fresh = false;
+    if (state.expr.length < MAX_LEN) state.expr += sym;
+  }
+
+  function backspace() {
+    if (state.error) clearAll();
+    else state.expr = state.expr.slice(0, -1);
+  }
+
+  function showError(e) {
+    state.error = e instanceof CalcError && e.kind === "div0" ? "Деление на 0" : "Ошибка";
+    state.fresh = false;
+  }
+
+  function showResult(value, label) {
+    const text = formatResult(value);
+    state.expr = text;
+    state.fresh = true;
+    state.error = "";
+    state.history.unshift([label, text]);
+    state.history.length = Math.min(state.history.length, HISTORY_LIMIT);
+    saveHistory();
+    renderHistory();
+  }
+
+  function calculate() {
+    if (!state.expr || state.error) return;
+    try { showResult(evaluate(state.expr), state.expr); }
+    catch (e) { showError(e); }
+  }
+
+  function applyFn(name) {
+    if (!state.expr || state.error) return;
+    try {
+      const value = evaluate(state.expr);
+      showResult(applyFunction(name, value), describe(name, state.expr));
+    } catch (e) { showError(e); }
+  }
+
+  function press(sym) {
+    if (sym === "C") clearAll();
+    else if (sym === "←") backspace();
+    else if (sym === "=") calculate();
+    else if (sym === "±") { if (!state.error) state.expr = toggleSign(state.expr); }
+    else if (FUNCS.has(sym)) applyFn(sym);
+    else addSymbol(sym);
+    render();
+  }
+
+  function flash(sym) {
+    const b = keysEl.querySelector(`[data-key="${sym}"]`);
+    if (!b) return;
+    b.classList.add("pressed");
+    setTimeout(() => b.classList.remove("pressed"), 120);
+  }
+
+  // ---------- События ----------
+  keysEl.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-key]");
+    if (!b) return;
+    press(b.dataset.key);
+    if (e.detail) b.blur(); // после мыши или касания фокус не держим, чтобы Enter не повторял кнопку
+  });
+
+  listEl.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-index]");
+    if (!b) return;
+    const item = state.history[Number(b.dataset.index)];
+    if (!item) return;
+    state.expr = item[1];
+    state.fresh = true;
+    state.error = "";
+    render();
+    if (e.detail) b.blur();
+  });
+
+  clearHistoryBtn.addEventListener("click", () => {
+    state.history = [];
+    saveHistory();
+    renderHistory();
+    clearHistoryBtn.blur();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key;
+    const active = document.activeElement;
+    // Если фокус на кнопке (навигация Tab), Enter и пробел работают как обычное нажатие
+    if (active && active.tagName === "BUTTON" && (k === "Enter" || k === " ")) return;
+
+    let sym = null;
+    if (k.length === 1 && (/[0-9]/.test(k) || "+-*/().".includes(k))) sym = k;
+    else if (k === ",") sym = ".";
+    else if (k === "Enter" || k === "=") sym = "=";
+    else if (k === "Backspace") sym = "←";
+    else if (k === "Escape" || k === "Delete") sym = "C";
+    else if (k === "%") sym = "%";
+    if (!sym) return;
+
+    e.preventDefault();
+    press(sym);
+    flash(sym);
+  });
+
+  buildKeys();
+  render();
+  renderHistory();
+})();
+</script>
+</body></html>
